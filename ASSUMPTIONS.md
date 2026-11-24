@@ -24,3 +24,8 @@ The brief leaves these open, so here's what I'm assuming and why.
 5. **No login, no database, data resets on restart.**
    The brief asks for an in-memory store, and auth isn't in scope.
    The cost: anyone with a code can call redeem. That's a real gap, and I'll come back to it in the walkthrough.
+
+6. **The redemption code is only shown once, when the booking is made.**
+   POST /bookings returns the code. GET /users/:id lists the user's bookings without their codes.
+   With no login, anyone can call GET /users/:id, so showing codes there would let them redeem someone else's booking.
+   The cost: a user who loses the POST response can't get their code back.
