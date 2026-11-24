@@ -1,4 +1,5 @@
 import { app } from "./app";
+import { CODE_LIFETIME_MS } from "./bookings";
 
 const PORT = Number(process.env.PORT) || 6548;
 
@@ -9,4 +10,5 @@ app.listen(PORT, (error) => {
     process.exit(1);
   }
   console.log(`API listening on http://localhost:${PORT}`);
+  console.log(`Redemption codes expire ${CODE_LIFETIME_MS / 1000} seconds after booking`);
 });

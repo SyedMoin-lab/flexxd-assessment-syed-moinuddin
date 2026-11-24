@@ -4,8 +4,11 @@ import { HttpError } from "./errors";
 import { bookings, users, venues } from "./store";
 import type { Booking } from "./types";
 
-/** A code can be redeemed for 10 minutes after the booking is made. */
-const CODE_LIFETIME_MS = 10 * 60 * 1000;
+/**
+ * How long a code can be redeemed after booking: 10 minutes by default.
+ * Set CODE_EXPIRY_SECONDS to shorten it when trying the expired case by hand.
+ */
+export const CODE_LIFETIME_MS = readExpirySeconds() * 1000;
 
 /**
  * Books a visit for today and returns the new booking with its code.
@@ -56,6 +59,42 @@ export function createBooking(userId: string, venueId: string) {
   bookings.set(booking.code, booking);
 
   return { booking, creditsRemaining: user.credits };
+}
+
+/**
+ * Redeems a code at the venue. Checks run in this order: the code exists (404),
+ * it hasn't been redeemed already (409), it hasn't expired (410). A code can only
+ * move from booked to redeemed once (assumption 4).
+ */
+export function redeemBooking(rawCode: string): Booking {
+  // Codes are case-insensitive: "46e9rp2p" finds "46E9RP2P".
+  const booking = bookings.get(rawCode.trim().toUpperCase());
+  if (!booking) {
+    throw new HttpError(404, "CODE_NOT_FOUND", "No booking has this code");
+  }
+
+  if (booking.status === "redeemed") {
+    throw new HttpError(409, "ALREADY_REDEEMED", `This code was already redeemed at ${booking.redeemedAt}`);
+  }
+
+  const now = new Date();
+  if (now.getTime() >= Date.parse(booking.expiresAt)) {
+    // Treated as a no-show, so the credit is not refunded (assumption 4).
+    throw new HttpError(
+      410,
+      "CODE_EXPIRED",
+      `This code expired at ${booking.expiresAt}. The credit is not refunded.`,
+    );
+  }
+
+  booking.status = "redeemed";
+  booking.redeemedAt = now.toISOString();
+  return booking;
+}
+
+function readExpirySeconds(): number {
+  const seconds = Number(process.env.CODE_EXPIRY_SECONDS);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 10 * 60;
 }
 
 /** The UTC calendar day of an ISO timestamp, e.g. "2026-11-24". */

@@ -1,5 +1,5 @@
 import express from "express";
-import { createBooking } from "./bookings";
+import { createBooking, redeemBooking } from "./bookings";
 import { errorHandler, HttpError, notFound } from "./errors";
 import { bookings, users } from "./store";
 import type { Booking } from "./types";
@@ -34,6 +34,12 @@ app.post("/bookings", (req, res) => {
   res.status(201).json({ ...booking, creditsRemaining });
 });
 
+// Redeems a code at the venue. Each code works once, until it expires.
+app.post("/bookings/redeem", (req, res) => {
+  const code = readRedeemRequest(req.body);
+  res.json(redeemBooking(code));
+});
+
 app.use(notFound);
 app.use(errorHandler);
 
@@ -53,11 +59,7 @@ function toBookingSummary(booking: Booking) {
 
 /** Checks the POST /bookings body. This is the first check (assumption 3). */
 function readBookingRequest(body: unknown): { userId: string; venueId: string } {
-  // req.body is undefined when the request isn't sent as application/json.
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    throw new HttpError(400, "INVALID_BODY", "Send a JSON object with Content-Type: application/json");
-  }
-  const { userId, venueId } = body as Record<string, unknown>;
+  const { userId, venueId } = readJsonObject(body);
   if (!isNonEmptyString(userId)) {
     throw new HttpError(400, "INVALID_BODY", "userId must be a non-empty string");
   }
@@ -65,6 +67,23 @@ function readBookingRequest(body: unknown): { userId: string; venueId: string } 
     throw new HttpError(400, "INVALID_BODY", "venueId must be a non-empty string");
   }
   return { userId, venueId };
+}
+
+/** Checks the POST /bookings/redeem body. This is the first check. */
+function readRedeemRequest(body: unknown): string {
+  const { code } = readJsonObject(body);
+  if (typeof code !== "string" || code.trim() === "") {
+    throw new HttpError(400, "INVALID_BODY", "code must be a non-empty string");
+  }
+  return code;
+}
+
+// req.body is undefined when the request isn't sent as application/json.
+function readJsonObject(body: unknown): Record<string, unknown> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new HttpError(400, "INVALID_BODY", "Send a JSON object with Content-Type: application/json");
+  }
+  return body as Record<string, unknown>;
 }
 
 function isNonEmptyString(value: unknown): value is string {
