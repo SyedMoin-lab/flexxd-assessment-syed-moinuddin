@@ -1,4 +1,5 @@
 import express from "express";
+import { createBooking } from "./bookings";
 import { errorHandler, HttpError, notFound } from "./errors";
 import { bookings, users } from "./store";
 import type { Booking } from "./types";
@@ -6,6 +7,7 @@ import type { Booking } from "./types";
 export const app = express();
 
 app.disable("x-powered-by");
+app.use(express.json());
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -25,12 +27,19 @@ app.get("/users/:id", (req, res) => {
   res.json({ id: user.id, name: user.name, credits: user.credits, bookings: userBookings });
 });
 
+// Books a visit for today. Costs 1 credit and returns the booking with its code.
+app.post("/bookings", (req, res) => {
+  const { userId, venueId } = readBookingRequest(req.body);
+  const { booking, creditsRemaining } = createBooking(userId, venueId);
+  res.status(201).json({ ...booking, creditsRemaining });
+});
+
 app.use(notFound);
 app.use(errorHandler);
 
 // Leaves out the redemption code on purpose. With no auth, anyone can call
 // this endpoint, so showing codes here would let them redeem other people's
-// bookings. The code is only returned once, by POST /bookings.
+// bookings. The code is only returned once, by POST /bookings (assumption 6).
 function toBookingSummary(booking: Booking) {
   return {
     id: booking.id,
@@ -40,4 +49,24 @@ function toBookingSummary(booking: Booking) {
     expiresAt: booking.expiresAt,
     redeemedAt: booking.redeemedAt,
   };
+}
+
+/** Checks the POST /bookings body. This is the first check (assumption 3). */
+function readBookingRequest(body: unknown): { userId: string; venueId: string } {
+  // req.body is undefined when the request isn't sent as application/json.
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new HttpError(400, "INVALID_BODY", "Send a JSON object with Content-Type: application/json");
+  }
+  const { userId, venueId } = body as Record<string, unknown>;
+  if (!isNonEmptyString(userId)) {
+    throw new HttpError(400, "INVALID_BODY", "userId must be a non-empty string");
+  }
+  if (!isNonEmptyString(venueId)) {
+    throw new HttpError(400, "INVALID_BODY", "venueId must be a non-empty string");
+  }
+  return { userId, venueId };
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }
